@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>悬浮时钟</title>
+    <style>
+      :root{
+        --bg:#f4f1ec;
+        --panel:#ffffff;
+        --panel-2:#ece7dd;
+        --ink:#1c1a17;
+        --ink-2:#6d675e;
+        --line:#ddd5c7;
+        --accent:#c03325;
+        --accent-soft:#fbe9e5;
+        --gold:#a97b1e;
+        --clock-bg:#16130f;
+        --clock-ink:#f7f2e7;
+        --clock-dim:#9a917f;
+        --shadow:0 10px 30px rgba(28,20,10,.14);
+      }
+      @media (prefers-color-scheme: dark){
+        :root{
+          --bg:#12100d;
+          --panel:#1e1a16;
+          --panel-2:#2a251f;
+          --ink:#f2ecdf;
+          --ink-2:#a89e8d;
+          --line:#3a332a;
+          --accent:#e2574a;
+          --accent-soft:#3a201c;
+          --gold:#d9a93f;
+          --clock-bg:#0a0908;
+          --clock-ink:#f7f2e7;
+          --clock-dim:#8d8471;
+          --shadow:0 10px 30px rgba(0,0,0,.5);
+        }
+      }
+      *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+      html,body{height:100%}
+      body{
+        margin:0;background:var(--bg);color:var(--ink);
+        font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+        padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+      }
+      button,[role="button"],select,input{font:inherit}
+      button{min-height:44px;cursor:pointer}
+      .wrap{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+
+      /* ---------- 主时钟 ---------- */
+      .clock-card{
+        background:var(--clock-bg);color:var(--clock-ink);
+        border-radius:20px;padding:22px 18px 18px;box-shadow:var(--shadow);
+        text-align:center;position:relative;overflow:hidden;
+      }
+      .clock-card::before{
+        content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--accent);
+      }
+      .date-line{font-size:15px;color:var(--clock-dim);letter-spacing:.06em;margin-bottom:6px}
+      .date-line b{color:var(--clock-ink);font-weight:600}
+      .big-time{
+        font-family:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+        font-variant-numeric:tabular-nums;
+        font-weight:700;line-height:1.05;letter-spacing:-.01em;
+        font-size:clamp(42px,13.2vw,78px);white-space:nowrap;
+      }
+      .big-time .ms{font-size:.38em;color:var(--accent);font-weight:700}
+      .big-time .colon{animation:blink 1s steps(1) infinite}
+      @media (prefers-reduced-motion: reduce){.big-time .colon{animation:none}}
+      @keyframes blink{50%{opacity:.25}}
+      .sub-row{display:flex;justify-content:center;gap:18px;margin-top:10px;font-size:13px;color:var(--clock-dim);flex-wrap:wrap}
+      .sub-row span b{color:var(--clock-ink);font-weight:600;font-variant-numeric:tabular-nums}
+
+      /* ---------- 倒计时 ---------- */
+      .cd-card{
+        background:var(--panel);border:1px solid var(--line);border-radius:16px;
+        padding:16px;margin-top:14px;box-shadow:var(--shadow);
+      }
+      .cd-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+      .cd-title{font-size:15px;font-weight:700}
+      .cd-title .tgt{color:var(--accent)}
+      .cd-state{font-size:12.5px;color:var(--ink-2)}
+      .cd-num{
+        font-family:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+        font-variant-numeric:tabular-nums;font-weight:700;
+        font-size:clamp(38px,11vw,54px);text-align:center;margin:8px 0 4px;letter-spacing:.01em;
+      }
+      .cd-num .ms{font-size:.5em;color:var(--accent)}
+      .cd-num.go{color:var(--accent)}
+      .bar{height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden;margin:10px 0 4px}
+      .bar i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px}
+      .bar-labels{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+
+      .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+      .chip{
+        border:1.5px solid var(--line);background:var(--panel);color:var(--ink);
+        border-radius:99px;padding:0 18px;font-size:15px;font-weight:600;min-height:44px;
+      }
+      .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+      .custom-row{display:flex;gap:8px;margin-top:10px;align-items:stretch}
+      .custom-row input{
+        flex:1;min-width:0;min-height:44px;border:1.5px solid var(--line);border-radius:12px;
+        background:var(--panel);color:var(--ink);padding:0 12px;font-size:16px;
+        font-variant-numeric:tabular-nums;
+      }
+      .custom-row button{
+        border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);
+        border-radius:12px;padding:0 18px;font-weight:600;
+      }
+
+      /* ---------- 黄金价格 ---------- */
+      .gold-card{
+        background:var(--panel);border:1px solid var(--line);border-radius:16px;
+        padding:16px;margin-top:14px;box-shadow:var(--shadow);
+      }
+      .gold-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .gold-title{font-size:15px;font-weight:700}
+      .gold-title span{color:var(--gold)}
+      .gold-refresh{
+        border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);
+        border-radius:99px;padding:0 14px;font-size:13.5px;font-weight:600;min-height:36px;
+      }
+      .gold-price{
+        text-align:center;margin:10px 0 2px;
+        font-variant-numeric:tabular-nums;line-height:1.1;
+      }
+      .gold-price .amt{font-size:clamp(40px,12vw,56px);font-weight:800;color:var(--gold);letter-spacing:-.01em}
+      .gold-price .unit{font-size:16px;font-weight:600;color:var(--ink-2);margin-left:4px}
+      .gold-sub{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);text-align:center}
+      .gold-sub b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+      .gold-meta{font-size:12.5px;color:var(--ink-2);text-align:center;margin-top:10px;line-height:1.6}
+      .gold-status{font-size:13.5px;text-align:center;margin-top:8px;min-height:20px;color:var(--ink-2)}
+      .gold-status.err{color:var(--accent);font-weight:600}
+      .gold-loading{opacity:.55}
+
+      /* ---------- 开关行 ---------- */
+      .opts{background:var(--panel);border:1px solid var(--line);border-radius:16px;margin-top:14px;box-shadow:var(--shadow);overflow:hidden}
+      .opt{display:flex;align-items:center;gap:12px;padding:6px 16px;min-height:58px}
+      .opt + .opt{border-top:1px solid var(--line)}
+      .opt .txt{flex:1;min-width:0}
+      .opt .txt b{display:block;font-size:15px;font-weight:600}
+      .opt .txt small{display:block;font-size:12.5px;color:var(--ink-2);margin-top:1px}
+      .switch{display:flex;flex:none}
+      .switch input{
+        appearance:none;-webkit-appearance:none;position:relative;flex:none;
+        width:52px;height:32px;min-height:32px;margin:0;cursor:pointer;
+        border-radius:99px;background:var(--panel-2);border:1.5px solid var(--line);transition:.18s;
+      }
+      .switch input::after{content:"";position:absolute;top:50%;left:3px;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:.18s}
+      .switch input:checked{background:var(--accent);border-color:var(--accent)}
+      .switch input:checked::after{transform:translate(20px,-50%)}
+      .switch input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+      .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+      .act{
+        border:none;border-radius:14px;font-size:15.5px;font-weight:700;min-height:52px;
+        display:flex;align-items:center;justify-content:center;gap:8px;
+      }
+      .act svg{width:20px;height:20px;flex:none}
+      .act.primary{background:var(--accent);color:#fff}
+      .act.ghost{background:var(--panel);color:var(--ink);border:1.5px solid var(--line)}
+      .act.on{outline:3px solid var(--gold);outline-offset:1px}
+
+      .hint{font-size:12.5px;color:var(--ink-2);line-height:1.7;margin:16px 4px 0}
+      .hint b{color:var(--ink)}
+
+      /* ---------- 悬浮到桌面（画中画） ---------- */
+      .pip-card{
+        background:var(--panel);border:1px solid var(--line);border-radius:16px;
+        padding:16px;margin-top:14px;box-shadow:var(--shadow);
+      }
+      .pip-title{font-size:15px;font-weight:700}
+      .pip-title small{display:block;font-size:12.5px;font-weight:400;color:var(--ink-2);margin-top:2px;line-height:1.5}
+      .pip-btn{
+        width:100%;margin-top:12px;border:none;border-radius:14px;min-height:52px;
+        background:var(--accent);color:#fff;font-size:16px;font-weight:700;
+        display:flex;align-items:center;justify-content:center;gap:8px;
+      }
+      .pip-btn svg{width:20px;height:20px;flex:none}
+      .pip-btn.on{outline:3px solid var(--gold);outline-offset:1px}
+      .pip-note{font-size:12.5px;color:var(--ink-2);line-height:1.7;margin:10px 2px 0}
+      .pip-fail{
+        display:none;margin-top:12px;background:var(--accent-soft);color:var(--ink);
+        border:1px solid var(--accent);border-radius:12px;padding:12px 14px;
+        font-size:13.5px;line-height:1.65;
+      }
+      .pip-fail.show{display:block}
+      .pip-fail b{color:var(--accent)}
+      #pipCanvas,#pipVideo{
+        position:fixed;left:-20px;top:-20px;width:4px;height:4px;
+        opacity:.01;pointer-events:none;
+      }
+
+      /* ---------- 悬浮小窗 ---------- */
+      #bubble{
+        position:fixed;z-index:50;left:14px;bottom:calc(18px + env(safe-area-inset-bottom));
+        background:rgba(16,13,10,.92);color:#f7f2e7;
+        border:1.5px solid rgba(247,242,231,.25);
+        border-radius:14px;padding:8px 14px 7px;box-shadow:0 8px 24px rgba(0,0,0,.4);
+        font-family:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+        font-variant-numeric:tabular-nums;touch-action:none;user-select:none;-webkit-user-select:none;
+        cursor:grab;display:none;min-width:150px;text-align:center;
+      }
+      #bubble.show{display:block}
+      #bubble .bt{font-size:24px;font-weight:700;line-height:1.15;white-space:nowrap}
+      #bubble .bt .ms{font-size:.55em;color:#ff7a6b}
+      #bubble .bd{font-size:11px;color:#b6ad99;letter-spacing:.05em;white-space:nowrap}
+      #bubble .bd b{color:#ffb3a8;font-weight:600}
+
+      /* 到点闪烁 */
+      body.alarm .clock-card{animation:alarmFlash .5s steps(2) 8}
+      @keyframes alarmFlash{50%{box-shadow:0 0 0 6px var(--accent)}}
+      @media (prefers-reduced-motion: reduce){body.alarm .clock-card{animation:none}}
+
+      .toast{
+        position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+        background:var(--ink);color:var(--bg);font-size:14px;padding:10px 18px;border-radius:99px;
+        opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:88vw;text-align:center;
+      }
+      .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <!-- 主时钟 -->
+      <section class="clock-card" aria-label="当前时间">
+        <div class="date-line" id="dateLine">—</div>
+        <div class="big-time" id="bigTime" aria-live="off">--:--:--<span class="ms">.000</span></div>
+        <div class="sub-row">
+          <span>北京时间 UTC+8</span>
+          <span>第 <b id="weekNo">—</b> 周</span>
+          <span id="lunarLine"></span>
+        </div>
+      </section>
+
+      <!-- 倒计时 -->
+      <section class="cd-card" aria-label="整点倒计时">
+        <div class="cd-head">
+          <div class="cd-title">距离 <span class="tgt" id="tgtLabel">20:00</span> 还有</div>
+          <div class="cd-state" id="cdState">自动选最近一场</div>
+        </div>
+        <div class="cd-num" id="cdNum">--:--:--<span class="ms">.000</span></div>
+        <div class="bar"><i id="barFill"></i></div>
+        <div class="bar-labels"><span id="barFrom">上一场</span><span id="barPct">0%</span><span id="barTo">目标</span></div>
+
+        <div class="chips" role="group" aria-label="选择目标时间">
+          <button class="chip" id="chipAuto" aria-pressed="true">自动（最近一场）</button>
+          <button class="chip" data-t="09:00" aria-pressed="false">09:00</button>
+          <button class="chip" data-t="20:00" aria-pressed="false">20:00</button>
+        </div>
+        <div class="custom-row">
+          <input type="time" id="customTime" step="1" aria-label="自定义目标时间" />
+          <button id="customBtn">设为目标</button>
+        </div>
+      </section>
+
+      <!-- 黄金实时价格 -->
+      <section class="gold-card" aria-label="黄金实时价格">
+        <div class="gold-head">
+          <div class="gold-title">黄金价格 <span>· 实时</span></div>
+          <button class="gold-refresh" id="btnGoldRefresh" type="button">刷新</button>
+        </div>
+        <div class="gold-price" id="goldPriceWrap"><span class="amt" id="goldCny">--.--</span><span class="unit">元/克</span></div>
+        <div class="gold-sub">
+          <span>国际金价 <b id="goldUsd">--.-- 美元/盎司</b></span>
+          <span>汇率 <b id="goldFx">--</b></span>
+        </div>
+        <div class="gold-status" id="goldStatus">正在获取金价…</div>
+        <div class="gold-meta"><span id="goldTime">更新时间：—</span><br />来源：国际现货金折算，仅供参考，非上金所报价 · 每 30 秒自动刷新</div>
+      </section>
+
+      <!-- 悬浮到桌面（画中画） -->
+      <section class="pip-card" aria-label="悬浮到桌面">
+        <div class="pip-title">悬浮到桌面<small>用系统画中画把时钟飘出去，浮在桌面和别的 App 上面</small></div>
+        <button class="pip-btn" id="btnPip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none"/></svg>
+          <span id="btnPipTxt">悬浮到桌面</span>
+        </button>
+        <p class="pip-note">用法：点上面的按钮后，直接回到手机桌面、或切到其他 App，时钟小窗会继续浮在最上面，可以按住拖动、双指捏合放大缩小；点一下小窗能回到这一页。抢购前先在这里把目标场次选好，小窗里会同时显示倒计时和黄金价格（元/克，跟下面金价区块同一份数据）。</p>
+        <div class="pip-fail" id="pipFail" role="alert">
+          <b>这台设备没接受网页画中画，悬浮没有打开</b>（不是你操作的问题，有些浏览器或系统版本会直接拒绝网页发起的画中画）。
+          最稳的替代办法：去 App Store 装一个画中画悬浮时钟 App（搜「悬浮时钟」），在里面开启画中画悬浮，就能飘在桌面和其他 App 上面；这一页继续当大字时钟和倒计时用。
+        </div>
+      </section>
+
+      <!-- 开关 -->
+      <section class="opts" aria-label="提醒设置">
+        <div class="opt">
+          <div class="txt"><b>到点提醒</b><small>到目标时间响铃并震动</small></div>
+          <label class="switch"><input type="checkbox" id="swAlarm" checked /><span class="tr"></span></label>
+        </div>
+        <div class="opt">
+          <div class="txt"><b>提前 10 秒报时</b><small>最后 10 秒每秒一声短鸣，最后一秒长鸣</small></div>
+          <label class="switch"><input type="checkbox" id="swPre" checked /><span class="tr"></span></label>
+        </div>
+        <div class="opt">
+          <div class="txt"><b>屏幕常亮</b><small>打开后这页不息屏，盯盘不用反复点屏幕</small></div>
+          <label class="switch"><input type="checkbox" id="swWake" /><span class="tr"></span></label>
+        </div>
+        <div class="opt">
+          <div class="txt"><b>悬浮小窗</b><small>页面内的小钟，可按住拖到任意位置</small></div>
+          <label class="switch"><input type="checkbox" id="swBubble" /><span class="tr"></span></label>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button class="act primary" id="btnTest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          试听提醒音
+        </button>
+        <button class="act ghost" id="btnFull">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          全屏显示
+        </button>
+      </div>
+
+      <p class="hint">
+        <b>怎么用：</b>抢购前打开这页，把目标选到 09:00 或 20:00，打开「屏幕常亮」，盯着毫秒数掐点点购买。
+        时间取自手机系统时钟（即手机状态栏的时间），请确认手机已开启「自动设置时间」。
+        想让时钟飘到桌面或 i茅台 上面，点上面「悬浮到桌面」走系统画中画；要是这台设备拒绝网页画中画，页面内的悬浮小窗只能在本页里拖动，那就抢购前先用这页对好节奏、看清还剩多久，再切过去。
+      </p>
+    </main>
+
+    <!-- 悬浮小窗 -->
+    <div id="bubble" role="img" aria-label="悬浮小窗时钟">
+      <div class="bt" id="bubbleTime">--:--:--<span class="ms">.000</span></div>
+      <div class="bd" id="bubbleCd">距 --:-- 还有 --:--</div>
+    </div>
+
+    <!-- 画中画素材：canvas 画面喂给 video，再由 video 进系统画中画 -->
+    <canvas id="pipCanvas" width="720" height="420" aria-hidden="true"></canvas>
+    <video id="pipVideo" muted playsinline autoplay aria-hidden="true"></video>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+      (function(){
+        "use strict";
+        var $ = function(id){ return document.getElementById(id); };
+        var bigTime=$("bigTime"), dateLine=$("dateLine"), weekNo=$("weekNo"), lunarLine=$("lunarLine"),
+            cdNum=$("cdNum"), cdState=$("cdState"), tgtLabel=$("tgtLabel"),
+            barFill=$("barFill"), barFrom=$("barFrom"), barTo=$("barTo"), barPct=$("barPct"),
+            bubble=$("bubble"), bubbleTime=$("bubbleTime"), bubbleCd=$("bubbleCd"),
+            toast=$("toast");
+
+        var WEEK=["日","一","二","三","四","五","六"];
+        function pad(n,l){ n=String(n); l=l||2; while(n.length<l) n="0"+n; return n; }
+        function fmtHMS(d){ return pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds()); }
+        function fmtMS(d){ return "."+pad(d.getMilliseconds(),3); }
+
+        /* 农历（浏览器自带，不联网） */
+        var lunarTxt="";
+        try{
+          var lf=new Intl.DateTimeFormat("zh-CN-u-ca-chinese",{month:"long",day:"numeric"});
+          lunarTxt=lf.format(new Date());
+        }catch(e){ lunarTxt=""; }
+        lunarLine.textContent = lunarTxt ? ("农历 "+lunarTxt) : "";
+
+        /* ISO 周数 */
+        function isoWeek(d){
+          var t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+          var day=(t.getUTCDay()+6)%7; t.setUTCDate(t.getUTCDate()-day+3);
+          var first=new Date(Date.UTC(t.getUTCFullYear(),0,4));
+          var fday=(first.getUTCDay()+6)%7; first.setUTCDate(first.getUTCDate()-fday+3);
+          return 1+Math.round((t-first)/(7*24*3600*1000));
+        }
+
+        /* ---------- 目标时间 ---------- */
+        var PRESETS=["09:00","20:00"];
+        var mode="auto";           // auto | fixed
+        var fixedStr="20:00";
+        function targetFor(str, now){
+          var p=str.split(":"), t=new Date(now);
+          t.setHours(+p[0], +(p[1]||0), +(p[2]||0), 0);
+          if(t.getTime()<=now.getTime()) t.setDate(t.getDate()+1);
+          return t;
+        }
+        function prevFor(str, now){
+          var p=str.split(":"), t=new Date(now);
+          t.setHours(+p[0], +(p[1]||0), +(p[2]||0), 0);
+          if(t.getTime()>now.getTime()) t.setDate(t.getDate()-1);
+          return t;
+        }
+        function pickTarget(now){
+          if(mode==="fixed") return {str:fixedStr, at:targetFor(fixedStr,now), prev:prevFor(fixedStr,now)};
+          var best=null;
+          PRESETS.forEach(function(s){
+            var at=targetFor(s,now);
+            if(!best || at<best.at) best={str:s, at:at, prev:prevFor(s,now)};
+          });
+          return best;
+        }
+
+        /* ---------- 声音 / 震动 ---------- */
+        var actx=null;
+        function ensureAudio(){
+          if(!actx){
+            var AC=window.AudioContext||window.webkitAudioContext;
+            if(AC) actx=new AC();
+          }
+          if(actx && actx.state==="suspended") actx.resume();
+        }
+        function beep(freq,dur,delay,vol){
+          if(!actx) return;
+          var t0=actx.currentTime+(delay||0);
+          var o=actx.createOscillator(), g=actx.createGain();
+          o.type="sine"; o.frequency.value=freq||880;
+          g.gain.setValueAtTime(0.0001,t0);
+          g.gain.exponentialRampToValueAtTime(vol||0.25, t0+0.015);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+          o.connect(g); g.connect(actx.destination);
+          o.start(t0); o.stop(t0+dur+0.05);
+        }
+        function vibrate(p){ if(navigator.vibrate) try{ navigator.vibrate(p); }catch(e){} }
+        function fireAlarm(){
+          document.body.classList.remove("alarm"); void document.body.offsetWidth;
+          document.body.classList.add("alarm");
+          beep(880,0.18,0); beep(880,0.18,0.25); beep(1320,0.5,0.5);
+          vibrate([200,80,200,80,400]);
+          setTimeout(function(){ document.body.classList.remove("alarm"); },4500);
+        }
+
+        /* ---------- 提示条 ---------- */
+        var toastTimer=null;
+        function showToast(msg){
+          toast.textContent=msg; toast.classList.add("show");
+          clearTimeout(toastTimer);
+          toastTimer=setTimeout(function(){ toast.classList.remove("show"); },2600);
+        }
+
+        /* ---------- 主循环 ---------- */
+        var lastSec=-1, lastCdWhole=-1, alarmedFor=0, lastDateStr="";
+        function frame(){
+          var now=new Date(), nowMs=now.getTime();
+
+          /* 大时钟 */
+          var tHtml=pad(now.getHours())+'<span class="colon">:</span>'+pad(now.getMinutes())+'<span class="colon">:</span>'+pad(now.getSeconds())+'<span class="ms">'+fmtMS(now)+"</span>";
+          bigTime.innerHTML=tHtml;
+          bubbleTime.innerHTML=fmtHMS(now)+'<span class="ms">'+fmtMS(now)+"</span>";
+
+          if(now.getSeconds()!==lastSec){
+            lastSec=now.getSeconds();
+            var dstr=now.getFullYear()+"-"+pad(now.getMonth()+1)+"-"+pad(now.getDate());
+            if(dstr!==lastDateStr){
+              lastDateStr=dstr;
+              dateLine.innerHTML="<b>"+now.getFullYear()+" 年 "+(now.getMonth()+1)+" 月 "+now.getDate()+" 日</b>　星期"+WEEK[now.getDay()];
+              weekNo.textContent=isoWeek(now);
+              try{
+                var lf2=new Intl.DateTimeFormat("zh-CN-u-ca-chinese",{month:"long",day:"numeric"});
+                lunarLine.textContent="农历 "+lf2.format(now);
+              }catch(e){}
+            }
+          }
+
+          /* 倒计时 */
+          var tg=pickTarget(now);
+          var remain=tg.at.getTime()-nowMs;
+          if(remain<0) remain=0;
+          var total=tg.at.getTime()-tg.prev.getTime();
+          var pct= total>0 ? Math.min(100, Math.max(0,(1-remain/total)*100)) : 100;
+
+          var rh=Math.floor(remain/3600000), rm=Math.floor(remain%3600000/60000),
+              rs=Math.floor(remain%60000/1000), rms=Math.floor(remain%1000);
+          cdNum.innerHTML=pad(rh)+":"+pad(rm)+":"+pad(rs)+'<span class="ms">.'+pad(rms,3)+"</span>";
+          tgtLabel.textContent=tg.str;
+          barFrom.textContent="上场 "+tg.str;
+          barTo.textContent="目标 "+tg.str+(tg.at.getDate()!==now.getDate()?"（明天）":"");
+          barPct.textContent=pct.toFixed(1)+"%";
+          barFill.style.width=pct+"%";
+
+          var rh2=rh, rm2=rm, rs2=rs;
+          bubbleCd.innerHTML="距 <b>"+tg.str+"</b> 还有 "+pad(rh2)+":"+pad(rm2)+":"+pad(rs2);
+
+          /* 画中画 canvas 同步画面 */
+          if(pipStreamOn) drawPip(now, tg.str, rh, rm, rs);
+
+          var wholeSec=Math.ceil(remain/1000);
+          var isGo = remain<=0 || (tg.at.getTime()-nowMs)<400 && alarmedFor!==tg.at.getTime();
+          cdNum.classList.toggle("go", remain<10000);
+
+          if(wholeSec!==lastCdWhole){
+            lastCdWhole=wholeSec;
+            if(wholeSec>60) cdState.textContent = mode==="auto" ? "自动选最近一场" : "已锁定目标";
+            else if(wholeSec>10) cdState.textContent="最后一分钟";
+            else if(wholeSec>0) cdState.textContent="马上到点";
+            /* 提前10秒报时 */
+            if($("swPre").checked && wholeSec<=10 && wholeSec>0){
+              ensureAudioSilent();
+              beep(wholeSec===1?1320:880, wholeSec===1?0.4:0.09, 0, 0.18);
+              if(wholeSec<=3) vibrate(40);
+            }
+          }
+          if(remain<500 && alarmedFor!==tg.at.getTime()){
+            alarmedFor=tg.at.getTime();
+            if($("swAlarm").checked){ ensureAudioSilent(); fireAlarm(); cdState.textContent="到点了！"; }
+          }
+          requestAnimationFrame(frame);
+        }
+        /* 不打扰地预热音频上下文（仅在用户已交互后有效） */
+        var audioArmed=false;
+        function ensureAudioSilent(){ if(audioArmed) ensureAudio(); }
+        document.addEventListener("pointerdown", function(){ audioArmed=true; ensureAudio(); }, {passive:true});
+        requestAnimationFrame(frame);
+
+        /* ---------- 目标选择 ---------- */
+        var chips=[].slice.call(document.querySelectorAll(".chip"));
+        function setPressed(){
+          chips.forEach(function(c){
+            var on = (c.id==="chipAuto" && mode==="auto") || (mode==="fixed" && c.getAttribute("data-t")===fixedStr);
+            c.setAttribute("aria-pressed", on?"true":"false");
+          });
+        }
+        chips.forEach(function(c){
+          c.addEventListener("click", function(){
+            ensureAudio();
+            if(c.id==="chipAuto"){ mode="auto"; }
+            else { mode="fixed"; fixedStr=c.getAttribute("data-t"); }
+            alarmedFor=0; lastCdWhole=-1; setPressed();
+            showToast("目标已设为 "+(mode==="auto"?"自动（最近一场）":fixedStr));
+          });
+        });
+        $("customBtn").addEventListener("click", function(){
+          var v=$("customTime").value;
+          if(!v){ showToast("先选一个时间"); return; }
+          var parts=v.split(":");
+          fixedStr=pad(+parts[0])+":"+pad(+(parts[1]||0))+(parts[2]?":"+pad(+parts[2]):"");
+          mode="fixed"; alarmedFor=0; lastCdWhole=-1; setPressed();
+          ensureAudio();
+          showToast("目标已设为 "+fixedStr);
+        });
+
+        /* ---------- 屏幕常亮 ---------- */
+        var wakeLock=null;
+        function applyWake(on){
+          if(on){
+            if(!navigator.wakeLock){ showToast("这台浏览器不支持屏幕常亮"); $("swWake").checked=false; return; }
+            navigator.wakeLock.request("screen").then(function(wl){
+              wakeLock=wl;
+              wl.addEventListener("release", function(){
+                wakeLock=null;
+                if($("swWake").checked && document.visibilityState==="visible") applyWake(true);
+              });
+              showToast("屏幕常亮已开");
+            }).catch(function(){ showToast("屏幕常亮开启失败"); $("swWake").checked=false; });
+          }else{
+            if(wakeLock){ wakeLock.release(); wakeLock=null; }
+          }
+        }
+        $("swWake").addEventListener("change", function(){ applyWake(this.checked); });
+        document.addEventListener("visibilitychange", function(){
+          if(document.visibilityState==="visible" && $("swWake").checked) applyWake(true);
+        });
+
+        /* ---------- 悬浮小窗 ---------- */
+        function applyBubble(){
+          var on=$("swBubble").checked;
+          bubble.classList.toggle("show", on);
+          if(on) showToast("小窗已打开，按住它可以拖到任意位置");
+        }
+        $("swBubble").addEventListener("change", applyBubble);
+        applyBubble();
+        (function(){
+          var dragging=false, sx=0, sy=0, ox=0, oy=0, moved=false;
+          bubble.addEventListener("pointerdown", function(e){
+            dragging=true; moved=false;
+            var r=bubble.getBoundingClientRect();
+            bubble.style.left=r.left+"px"; bubble.style.top=r.top+"px"; bubble.style.bottom="auto";
+            sx=e.clientX; sy=e.clientY; ox=r.left; oy=r.top;
+            bubble.setPointerCapture(e.pointerId);
+          });
+          bubble.addEventListener("pointermove", function(e){
+            if(!dragging) return;
+            var dx=e.clientX-sx, dy=e.clientY-sy;
+            if(Math.abs(dx)+Math.abs(dy)>4) moved=true;
+            var w=bubble.offsetWidth, h=bubble.offsetHeight;
+            var nx=Math.min(Math.max(ox+dx,4), window.innerWidth-w-4);
+            var ny=Math.min(Math.max(oy+dy,4), window.innerHeight-h-4);
+            bubble.style.left=nx+"px"; bubble.style.top=ny+"px";
+          });
+          function end(){ dragging=false; }
+          bubble.addEventListener("pointerup", end);
+          bubble.addEventListener("pointercancel", end);
+        })();
+
+        /* ---------- 悬浮到桌面（画中画） ---------- */
+        var pipVideo=$("pipVideo"), pipCanvas=$("pipCanvas"), pipCtx=pipCanvas.getContext("2d");
+        var pipStreamOn=false, pipOn=false;
+        /* 与页面金价区块共用的最新金价（元/克）；未成功获取前为 null */
+        var goldCnyNow=null;
+        function drawPip(now, tgtStr, rh, rm, rs){
+          if(!pipCtx) return;
+          var W=720, H=420, c=pipCtx;
+          c.fillStyle="#16130f"; c.fillRect(0,0,W,H);
+          c.fillStyle="#c03325"; c.fillRect(0,0,W,10);
+          var main=fmtHMS(now), ms=fmtMS(now);
+          c.textBaseline="alphabetic";
+          c.font="700 118px ui-monospace,Menlo,Consolas,monospace";
+          var wMain=c.measureText(main).width;
+          c.font="700 54px ui-monospace,Menlo,Consolas,monospace";
+          var wMs=c.measureText(ms).width;
+          var x=(W-wMain-wMs-6)/2;
+          c.font="700 118px ui-monospace,Menlo,Consolas,monospace";
+          c.fillStyle="#f7f2e7"; c.fillText(main, x, 168);
+          c.font="700 54px ui-monospace,Menlo,Consolas,monospace";
+          c.fillStyle="#ff7a6b"; c.fillText(ms, x+wMain+6, 168);
+          c.font="500 46px -apple-system,'PingFang SC',sans-serif";
+          var cd="距 "+tgtStr+" 还有 "+pad(rh)+":"+pad(rm)+":"+pad(rs);
+          var wCd=c.measureText(cd).width;
+          c.fillStyle="#b6ad99"; c.fillText(cd, (W-wCd)/2, 252);
+          /* 金价行：与页面区块同一份数据，随 30 秒刷新同步 */
+          c.font="600 46px -apple-system,'PingFang SC',sans-serif";
+          var gp = (typeof goldCnyNow==="number" && isFinite(goldCnyNow))
+            ? "黄金 ¥"+goldCnyNow.toFixed(2)+"/克"
+            : "金价 —";
+          var wGp=c.measureText(gp).width;
+          c.fillStyle = (typeof goldCnyNow==="number" && isFinite(goldCnyNow)) ? "#d9a93f" : "#8d8471";
+          c.fillText(gp, (W-wGp)/2, 336);
+        }
+        function setPipOn(on){
+          pipOn=on;
+          $("btnPipTxt").textContent = on ? "关闭悬浮" : "悬浮到桌面";
+          $("btnPip").classList.toggle("on", on);
+          if(on){ $("pipFail").classList.remove("show"); showToast("已悬浮，回桌面或切到其他 App 都还在"); }
+        }
+        function pipFailShow(){ $("pipFail").classList.add("show"); }
+        pipVideo.addEventListener("webkitpresentationmodechanged", function(){
+          setPipOn(pipVideo.webkitPresentationMode==="picture-in-picture");
+        });
+        pipVideo.addEventListener("enterpictureinpicture", function(){ setPipOn(true); });
+        pipVideo.addEventListener("leavepictureinpicture", function(){ setPipOn(false); });
+        function exitPip(){
+          try{
+            if(document.pictureInPictureElement && document.exitPictureInPicture) document.exitPictureInPicture();
+            else if(typeof pipVideo.webkitSetPresentationMode==="function") pipVideo.webkitSetPresentationMode("inline");
+          }catch(e){}
+          setPipOn(false);
+        }
+        $("btnPip").addEventListener("click", function(){
+          audioArmed=true; ensureAudio();
+          if(pipOn){ exitPip(); return; }
+          $("pipFail").classList.remove("show");
+          var canWebkit = typeof pipVideo.webkitSetPresentationMode==="function";
+          var canStd = typeof pipVideo.requestPictureInPicture==="function" && !document.pictureInPictureDisabled;
+          if(!pipCanvas.captureStream || (!canWebkit && !canStd)){ pipFailShow(); return; }
+          if(!pipStreamOn){
+            try{ pipVideo.srcObject=pipCanvas.captureStream(30); pipStreamOn=true; }
+            catch(e){ pipFailShow(); return; }
+          }
+          var go=function(){
+            if(canWebkit){
+              try{ pipVideo.webkitSetPresentationMode("picture-in-picture"); }catch(e){}
+              /* 是否真进了画中画由事件确认；等一会儿还没进去就是被拒了 */
+              setTimeout(function(){ if(!pipOn) pipFailShow(); }, 900);
+            }else{
+              pipVideo.requestPictureInPicture().then(function(){}).catch(function(){ pipFailShow(); });
+            }
+          };
+          var p=null;
+          try{ p=pipVideo.play(); }catch(e){}
+          if(p && typeof p.then==="function") p.then(go).catch(function(){ pipFailShow(); });
+          else go();
+        });
+
+        /* ---------- 按钮 ---------- */
+        $("btnTest").addEventListener("click", function(){
+          audioArmed=true; ensureAudio();
+          if(!actx){ showToast("这台浏览器不支持声音提醒"); return; }
+          fireAlarm();
+          showToast("这就是到点时的提醒效果");
+        });
+        $("btnFull").addEventListener("click", function(){
+          var el=document.documentElement;
+          if(document.fullscreenElement){ document.exitFullscreen(); this.classList.remove("on"); }
+          else if(el.requestFullscreen){ el.requestFullscreen().then(function(){}).catch(function(){ showToast("全屏打开失败"); }); }
+          else showToast("这台浏览器不支持全屏");
+        });
+        document.addEventListener("fullscreenchange", function(){
+          $("btnFull").classList.toggle("on", !!document.fullscreenElement);
+        });
+
+        /* ---------- 黄金实时价格 ---------- */
+        var goldCnyEl=$("goldCny"), goldUsdEl=$("goldUsd"), goldFxEl=$("goldFx"),
+            goldStatusEl=$("goldStatus"), goldTimeEl=$("goldTime"), goldWrap=$("goldPriceWrap"),
+            goldBusy=false;
+        function goldFail(){
+          goldStatusEl.textContent="金价暂时获取失败，稍后自动重试";
+          goldStatusEl.classList.add("err");
+          goldWrap.classList.remove("gold-loading");
+        }
+        function fetchGold(){
+          if(goldBusy) return;
+          goldBusy=true;
+          goldWrap.classList.add("gold-loading");
+          if(goldStatusEl.classList.contains("err")){ goldStatusEl.textContent="正在重新获取…"; goldStatusEl.classList.remove("err"); }
+          var p1=fetch("https://api.gold-api.com/price/XAU").then(function(r){ if(!r.ok) throw new Error("xau"); return r.json(); });
+          var p2=fetch("https://open.er-api.com/v6/latest/USD").then(function(r){ if(!r.ok) throw new Error("fx"); return r.json(); });
+          Promise.all([p1,p2]).then(function(res){
+            var xau=res[0], fx=res[1];
+            var usdOz = (xau && typeof xau.price==="number") ? xau.price : (xau && xau.price ? parseFloat(xau.price) : NaN);
+            var rate = fx && fx.rates ? parseFloat(fx.rates.CNY) : NaN;
+            if(!isFinite(usdOz) || !isFinite(rate) || usdOz<=0 || rate<=0) throw new Error("bad");
+            var cnyGram = usdOz * rate / 31.1035;
+            goldCnyNow = cnyGram; /* 同步给悬浮小窗（画中画）里的金价行 */
+            goldCnyEl.textContent = cnyGram.toFixed(2);
+            goldUsdEl.textContent = usdOz.toFixed(2)+" 美元/盎司";
+            goldFxEl.textContent = "1 美元 ≈ "+rate.toFixed(4)+" 元";
+            var now2=new Date();
+            goldTimeEl.textContent = "更新时间："+pad(now2.getHours())+":"+pad(now2.getMinutes())+":"+pad(now2.getSeconds());
+            goldStatusEl.textContent="已更新 · 30 秒后自动刷新";
+            goldStatusEl.classList.remove("err");
+            goldWrap.classList.remove("gold-loading");
+            goldBusy=false;
+          }).catch(function(){
+            goldBusy=false;
+            goldFail();
+          });
+        }
+        $("btnGoldRefresh").addEventListener("click", function(){ fetchGold(); });
+        fetchGold();
+        setInterval(fetchGold, 30000);
+      })();
+    </script>
+  </body>
+</html>
