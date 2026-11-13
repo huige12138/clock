@@ -189,7 +189,16 @@
       }
       .pip-fail.show{display:block}
       .pip-fail b{color:var(--accent)}
-      #pipCanvas,#pipVideo{
+      /* 悬浮预览：video 必须在页面内真实渲染（不能隐藏/零尺寸），
+         否则 iOS Safari 不合成 canvas.captureStream 的帧，画中画会一片黑 */
+      .pip-preview{display:flex;align-items:center;gap:12px;margin-top:12px}
+      .pip-preview .lbl{font-size:13px;font-weight:600;color:var(--ink-2);flex:none}
+      #pipVideo{
+        display:block;width:120px;height:70px;flex:none;
+        border-radius:10px;border:1.5px solid var(--line);
+        background:#16130f;object-fit:cover;
+      }
+      #pipCanvas{
         position:fixed;left:-20px;top:-20px;width:4px;height:4px;
         opacity:.01;pointer-events:none;
       }
@@ -275,6 +284,10 @@
       <!-- 悬浮到桌面（画中画） -->
       <section class="pip-card" aria-label="悬浮到桌面">
         <div class="pip-title">悬浮到桌面<small>用系统画中画把时钟飘出去，浮在桌面和别的 App 上面</small></div>
+        <div class="pip-preview">
+          <span class="lbl">悬浮预览</span>
+          <video id="pipVideo" muted playsinline autoplay aria-label="悬浮预览"></video>
+        </div>
         <button class="pip-btn" id="btnPip">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none"/></svg>
           <span id="btnPipTxt">悬浮到桌面</span>
@@ -330,9 +343,8 @@
       <div class="bd" id="bubbleCd">距 --:-- 还有 --:--</div>
     </div>
 
-    <!-- 画中画素材：canvas 画面喂给 video，再由 video 进系统画中画 -->
+    <!-- 画中画素材：canvas 画面喂给悬浮区块内的 video 预览，再由 video 进系统画中画 -->
     <canvas id="pipCanvas" width="720" height="420" aria-hidden="true"></canvas>
-    <video id="pipVideo" muted playsinline autoplay aria-hidden="true"></video>
 
     <div class="toast" id="toast" role="status"></div>
 
@@ -587,7 +599,7 @@
 
         /* ---------- 悬浮到桌面（画中画） ---------- */
         var pipVideo=$("pipVideo"), pipCanvas=$("pipCanvas"), pipCtx=pipCanvas.getContext("2d");
-        var pipStreamOn=false, pipOn=false;
+        var pipStreamOn=false, pipOn=false, pipInterval=null;
         /* 与页面金价区块共用的最新金价（元/克）；未成功获取前为 null */
         var goldCnyNow=null;
         function drawPip(now, tgtStr, rh, rm, rs){
@@ -619,6 +631,31 @@
           c.fillStyle = (typeof goldCnyNow==="number" && isFinite(goldCnyNow)) ? "#d9a93f" : "#8d8471";
           c.fillText(gp, (W-wGp)/2, 336);
         }
+        /* 绘制循环用 setInterval 独立跑（约 30fps）：页面切后台/进画中画后
+           requestAnimationFrame 会停，只有 interval 能持续给 video 喂新帧 */
+        function pipTick(){
+          var now=new Date();
+          var tg=pickTarget(now);
+          var remain=Math.max(0, tg.at.getTime()-now.getTime());
+          var rh=Math.floor(remain/3600000), rm=Math.floor(remain%3600000/60000), rs=Math.floor(remain%60000/1000);
+          drawPip(now, tg.str, rh, rm, rs);
+        }
+        function startPipLoop(){
+          pipTick(); /* 先同步画出一帧，保证赋流之前画面不为空 */
+          if(!pipInterval) pipInterval=setInterval(pipTick, 33);
+        }
+        function ensurePipStream(){
+          if(pipStreamOn) return true;
+          if(!pipCanvas.captureStream) return false;
+          try{ pipVideo.srcObject=pipCanvas.captureStream(30); pipStreamOn=true; }
+          catch(e){ return false; }
+          return true;
+        }
+        /* 页面打开就启动预览：画一帧 → 赋流 → 播放，让区块内的预览小窗先活起来 */
+        startPipLoop();
+        if(ensurePipStream()){
+          try{ var ip=pipVideo.play(); if(ip && typeof ip.catch==="function") ip.catch(function(){}); }catch(e){}
+        }
         function setPipOn(on){
           pipOn=on;
           $("btnPipTxt").textContent = on ? "关闭悬浮" : "悬浮到桌面";
@@ -645,10 +682,9 @@
           var canWebkit = typeof pipVideo.webkitSetPresentationMode==="function";
           var canStd = typeof pipVideo.requestPictureInPicture==="function" && !document.pictureInPictureDisabled;
           if(!pipCanvas.captureStream || (!canWebkit && !canStd)){ pipFailShow(); return; }
-          if(!pipStreamOn){
-            try{ pipVideo.srcObject=pipCanvas.captureStream(30); pipStreamOn=true; }
-            catch(e){ pipFailShow(); return; }
-          }
+          /* 顺序不能乱：先启动绘制循环并至少画过一帧 → 再赋流（已赋过不重复）→ 播放 → 最后进画中画 */
+          startPipLoop();
+          if(!ensurePipStream()){ pipFailShow(); return; }
           var go=function(){
             if(canWebkit){
               try{ pipVideo.webkitSetPresentationMode("picture-in-picture"); }catch(e){}
